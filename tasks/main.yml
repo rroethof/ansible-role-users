@@ -1,0 +1,73 @@
+---
+- name: Per-user group creation
+  group: >
+    name="{{item.username}}" 
+    gid="{{item.uid}}"
+  with_items: users
+  when: item.group is undefined
+  tags: ['users','configuration']
+
+- name: Groups creation
+  group: >
+    name="{{item.name}}" 
+    gid="{{item.gid}}"
+    state="present"
+  with_items: users_groups
+  tags: ['users','configuration']
+
+- name: User creation
+  user: >
+        name="{{item.username}}"
+        group="{{item.group| default(item.username if users_create_per_user_group
+            else users_group)}}"
+        groups="{{item.groups | join(',')}}"
+        append="{{users_append_groups}}"
+        shell={{item.shell if item.shell is defined else users_default_shell}}
+        password="{{item.password if item.password is defined else '!'}}"
+        comment="{{item.name | default(item.username)}}"
+        uid="{{item.uid}}"
+        createhome="{{'yes' if users_create_homedirs else 'no'}}"
+  with_items: users
+  tags: ['users','configuration']
+
+- name: SSH keys
+  authorized_key: >
+    user="{{item.0.username}}" 
+    key="{{item.1}}"
+  with_subelements:
+    - users
+    - ssh_key
+  tags: ['users','configuration']
+
+- name: Remove revoked SSH keys
+  authorized_key: >
+    user="{{item.0.username}}" 
+    key="{{item.1}}"
+    state="absent"
+  with_nested:
+    - users
+    - users_revoked_ssh_key
+  tags: ['users','configuration']
+
+- name: Deleted user removal
+  user: >
+    name="{{item.username}}" 
+    state=absent
+  with_items: users_deleted
+  tags: ['users','configuration']
+
+- name: Deleted per-user group removal
+  group: >
+    name="{{item.username}}" 
+    state=absent
+  with_items: users_deleted
+  when: users_create_per_user_group
+  tags: ['users','configuration']
+
+- name: Generate root random password
+  user: >
+        name=root
+        uid=0
+        password="{{ lookup('password', users_root_password_file+' chars='+users_root_password_chars+' encrypt='+users_root_password_encrypt+' length='+users_root_password_length) }}"
+  when: users_root_random_password
+  tags: ['users','configuration']
